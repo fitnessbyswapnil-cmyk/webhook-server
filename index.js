@@ -30,17 +30,30 @@ app.post("/webhook", async (req, res) => {
 
     console.log("Webhook Data:", JSON.stringify(body, null, 2));
 
-    // 🔥 FIXED DATA EXTRACTION (MOST IMPORTANT)
+    // ✅ CORRECT CASHFREE PAYLOAD STRUCTURE
     const email = body.data?.customer_details?.customer_email;
     const phone = body.data?.customer_details?.customer_phone;
 
     const value = body.data?.order?.order_amount;
     const event_id = body.data?.order?.order_id;
 
-    // ❌ agar data nahi mila toh crash mat hone de
+    // ❌ Agar payment success nahi hai toh skip
+    const payment_status = body.data?.payment?.payment_status;
+    if (payment_status !== "SUCCESS") {
+      console.log("Payment not successful → skipping ❌");
+      return res.sendStatus(200);
+    }
+
+    // ❌ Agar user data nahi hai toh skip
+    if (!email && !phone) {
+      console.log("No user data → skipping ❌");
+      return res.sendStatus(200);
+    }
+
+    // ❌ Agar required fields missing
     if (!event_id || !value) {
-      console.log("Invalid payload received ❌");
-      return res.sendStatus(200); // important: Cashfree ko 200 bhejna hi hai
+      console.log("Invalid payload → skipping ❌");
+      return res.sendStatus(200);
     }
 
     await axios.post(
@@ -56,6 +69,14 @@ app.post("/webhook", async (req, res) => {
             user_data: {
               em: email ? [hashData(email)] : [],
               ph: phone ? [hashData(phone)] : [],
+
+              external_id: event_id ? [hashData(event_id)] : [],
+
+              client_ip_address:
+                req.headers["x-forwarded-for"] ||
+                req.socket.remoteAddress,
+
+              client_user_agent: req.headers["user-agent"],
             },
 
             custom_data: {
@@ -73,12 +94,12 @@ app.post("/webhook", async (req, res) => {
   } catch (err) {
     console.error("Error:", err.response?.data || err.message);
 
-    // ⚠️ VERY IMPORTANT → Cashfree retry avoid karne ke liye
+    // ⚠️ IMPORTANT: Cashfree retry avoid karne ke liye always 200
     res.sendStatus(200);
   }
 });
 
-// PORT (Render ke liye important)
+// PORT (Render ke liye)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
