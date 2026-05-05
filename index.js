@@ -12,13 +12,25 @@ const crypto = require("crypto");\
 const app = express();\
 app.use(express.json());\
 \
+// \uc0\u9989  ENV VARIABLES\
+const PIXEL_ID = process.env.PIXEL_ID;\
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;\
+\
+// \uc0\u9989  HASH FUNCTION\
 function hashData(data) \{\
   if (!data) return null;\
-  return crypto.createHash("sha256")\
+  return crypto\
+    .createHash("sha256")\
     .update(data.trim().toLowerCase())\
     .digest("hex");\
 \}\
 \
+// \uc0\u9989  HEALTH CHECK (IMPORTANT FOR RENDER)\
+app.get("/healthz", (req, res) => \{\
+  res.status(200).send("OK");\
+\});\
+\
+// \uc0\u9989  WEBHOOK\
 app.post("/webhook", async (req, res) => \{\
   try \{\
     const data = req.body;\
@@ -31,7 +43,7 @@ app.post("/webhook", async (req, res) => \{\
     const event_id = data.order_id;\
 \
     await axios.post(\
-      "https://graph.facebook.com/v19.0/1004294955172584/events?access_token=EAAH12nj475oBQFoKHA6AlMHk2v478kgKpwqx3KMev3pnYIK0FIEfIBRxi9gQ5SRI1yoHMG7fLhicuG9vPGZATneElQkVzLKObga8olqvDQRMjeWKOzaakCjSxJ5gPqNgqGrLPVZBxHpW1iZABVXpyBIPkydD4Wl1ZACnBdbIGf4b60TjWmzl1nNvIRGr3gZDZD",\
+      `https://graph.facebook.com/v19.0/$\{PIXEL_ID\}/events?access_token=$\{ACCESS_TOKEN\}`,\
       \{\
         data: [\
           \{\
@@ -54,14 +66,17 @@ app.post("/webhook", async (req, res) => \{\
       \}\
     );\
 \
-    console.log("Meta Event Sent");\
+    console.log("\uc0\u9989  Meta Event Sent");\
 \
     res.sendStatus(200);\
-\
   \} catch (err) \{\
-    console.error("Error:", err);\
+    console.error("\uc0\u10060  Error:", err.response?.data || err.message);\
     res.sendStatus(500);\
   \}\
 \});\
 \
-app.listen(3000, () => console.log("Server running"));}
+// \uc0\u9989  DYNAMIC PORT (VERY IMPORTANT FOR RENDER)\
+const PORT = process.env.PORT || 3000;\
+app.listen(PORT, () => \{\
+  console.log(`\uc0\u55357 \u56960  Server running on port $\{PORT\}`);\
+\});}
