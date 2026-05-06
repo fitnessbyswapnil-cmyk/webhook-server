@@ -9,9 +9,9 @@ app.use(express.json());
 const PIXEL_ID = process.env.PIXEL_ID;
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
-// HASH FUNCTION
+// HASH FUNCTION (safer)
 function hashData(data) {
-  if (!data) return null;
+  if (!data || typeof data !== "string") return null;
   return crypto
     .createHash("sha256")
     .update(data.trim().toLowerCase())
@@ -30,23 +30,21 @@ app.post("/webhook", async (req, res) => {
 
     console.log("Webhook Data:", JSON.stringify(body, null, 2));
 
-    // 📦 Extract data from Cashfree payload
-    const email = body.data?.customer_details?.customer_email;
-    const phone = body.data?.customer_details?.customer_phone;
-    const name = body.data?.customer_details?.customer_name;
+    // 📦 Extract data
+    const email = body.data?.customer_details?.customer_email || null;
+    const phone = body.data?.customer_details?.customer_phone || null;
+    const fullName = body.data?.customer_details?.customer_name || null;
 
     const value = body.data?.order?.order_amount;
     const event_id = body.data?.order?.order_id;
-
     const payment_status = body.data?.payment?.payment_status;
 
-    // ❌ Skip if not success
+    // ❌ Skip invalid cases
     if (payment_status !== "SUCCESS") {
       console.log("Payment not successful → skipping ❌");
       return res.sendStatus(200);
     }
 
-    // ❌ Skip if no identifiers
     if (!email && !phone) {
       console.log("No user data → skipping ❌");
       return res.sendStatus(200);
@@ -57,17 +55,19 @@ app.post("/webhook", async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // 🔥 Name Split Logic
+    // 🔥 NAME SPLIT (ROBUST)
     let firstName = null;
     let lastName = null;
 
-    if (name) {
-      const parts = name.trim().split(" ");
-      firstName = parts[0];
-      lastName = parts.slice(1).join(" ") || "";
+    if (fullName && typeof fullName === "string") {
+      const cleanedName = fullName.trim().replace(/\s+/g, " ");
+      const parts = cleanedName.split(" ");
+
+      firstName = parts[0] || null;
+      lastName = parts.length > 1 ? parts.slice(1).join(" ") : null;
     }
 
-    // 🔥 Fallback (optional but powerful)
+    // 🔥 FALLBACK (EMQ BOOST)
     if (!firstName && email) {
       firstName = email.split("@")[0];
     }
@@ -114,7 +114,7 @@ app.post("/webhook", async (req, res) => {
   } catch (err) {
     console.error("Error:", err.response?.data || err.message);
 
-    // IMPORTANT: Always return 200 to avoid webhook retries
+    // Always return 200 (important for Cashfree)
     res.sendStatus(200);
   }
 });
