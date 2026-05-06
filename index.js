@@ -18,7 +18,7 @@ function hashData(data) {
     .digest("hex");
 }
 
-// HEALTH CHECK (Render ke liye)
+// HEALTH CHECK
 app.get("/healthz", (req, res) => {
   res.status(200).send("OK");
 });
@@ -30,33 +30,50 @@ app.post("/webhook", async (req, res) => {
 
     console.log("Webhook Data:", JSON.stringify(body, null, 2));
 
-    // ✅ CORRECT CASHFREE PAYLOAD STRUCTURE
+    // 📦 Extract data from Cashfree payload
     const email = body.data?.customer_details?.customer_email;
     const phone = body.data?.customer_details?.customer_phone;
+    const name = body.data?.customer_details?.customer_name;
 
     const value = body.data?.order?.order_amount;
     const event_id = body.data?.order?.order_id;
 
-    // ❌ Agar payment success nahi hai toh skip
     const payment_status = body.data?.payment?.payment_status;
+
+    // ❌ Skip if not success
     if (payment_status !== "SUCCESS") {
       console.log("Payment not successful → skipping ❌");
       return res.sendStatus(200);
     }
 
-    // ❌ Agar user data nahi hai toh skip
+    // ❌ Skip if no identifiers
     if (!email && !phone) {
       console.log("No user data → skipping ❌");
       return res.sendStatus(200);
     }
 
-    // ❌ Agar required fields missing
     if (!event_id || !value) {
       console.log("Invalid payload → skipping ❌");
       return res.sendStatus(200);
     }
 
-    await axios.post(
+    // 🔥 Name Split Logic
+    let firstName = null;
+    let lastName = null;
+
+    if (name) {
+      const parts = name.trim().split(" ");
+      firstName = parts[0];
+      lastName = parts.slice(1).join(" ") || "";
+    }
+
+    // 🔥 Fallback (optional but powerful)
+    if (!firstName && email) {
+      firstName = email.split("@")[0];
+    }
+
+    // 🚀 SEND TO META
+    const response = await axios.post(
       `https://graph.facebook.com/v19.0/${PIXEL_ID}/events?access_token=${ACCESS_TOKEN}`,
       {
         data: [
@@ -69,6 +86,9 @@ app.post("/webhook", async (req, res) => {
             user_data: {
               em: email ? [hashData(email)] : [],
               ph: phone ? [hashData(phone)] : [],
+
+              fn: firstName ? [hashData(firstName)] : [],
+              ln: lastName ? [hashData(lastName)] : [],
 
               external_id: event_id ? [hashData(event_id)] : [],
 
@@ -88,18 +108,18 @@ app.post("/webhook", async (req, res) => {
       }
     );
 
-    console.log("Meta Event Sent ✅");
+    console.log("Meta Event Sent ✅", response.data);
 
     res.sendStatus(200);
   } catch (err) {
     console.error("Error:", err.response?.data || err.message);
 
-    // ⚠️ IMPORTANT: Cashfree retry avoid karne ke liye always 200
+    // IMPORTANT: Always return 200 to avoid webhook retries
     res.sendStatus(200);
   }
 });
 
-// PORT (Render ke liye)
+// START SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
